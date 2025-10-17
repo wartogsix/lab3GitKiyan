@@ -1,0 +1,325 @@
+-- Создание базы данных
+CREATE DATABASE bakery_supply_dv;
+
+
+-- Таблица для отслеживания загрузок
+CREATE TABLE load_date (
+    load_date_id SERIAL PRIMARY KEY,
+    load_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    source_system VARCHAR(50) NOT NULL,
+    batch_id VARCHAR(100),
+    records_loaded INTEGER
+);
+
+COMMENT ON TABLE load_date IS 'Таблица для отслеживания загрузок данных';
+COMMENT ON COLUMN load_date.load_date_id IS 'Уникальный идентификатор загрузки';
+COMMENT ON COLUMN load_date.load_timestamp IS 'Временная метка загрузки';
+COMMENT ON COLUMN load_date.source_system IS 'Система-источник данных';
+COMMENT ON COLUMN load_date.batch_id IS 'Идентификатор пакетной загрузки';
+
+-- Хабы (Hubs)
+CREATE TABLE hub_supplier (
+    supplier_hash_key VARCHAR(32) PRIMARY KEY,
+    supplier_id INTEGER NOT NULL,
+    load_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    record_source VARCHAR(50) NOT NULL,
+    UNIQUE(supplier_id)
+);
+
+COMMENT ON TABLE hub_supplier IS 'Хаб поставщиков';
+COMMENT ON COLUMN hub_supplier.supplier_hash_key IS 'Хеш-ключ поставщика (MD5 от supplier_id)';
+COMMENT ON COLUMN hub_supplier.supplier_id IS 'Бизнес-ключ поставщика';
+COMMENT ON COLUMN hub_supplier.load_date IS 'Дата загрузки записи';
+COMMENT ON COLUMN hub_supplier.record_source IS 'Источник записи';
+
+CREATE TABLE hub_product (
+    product_hash_key VARCHAR(32) PRIMARY KEY,
+    product_id INTEGER NOT NULL,
+    load_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    record_source VARCHAR(50) NOT NULL,
+    UNIQUE(product_id)
+);
+
+COMMENT ON TABLE hub_product IS 'Хаб продукции';
+COMMENT ON COLUMN hub_product.product_hash_key IS 'Хеш-ключ продукта (MD5 от product_id)';
+COMMENT ON COLUMN hub_product.product_id IS 'Бизнес-ключ продукта';
+COMMENT ON COLUMN hub_product.load_date IS 'Дата загрузки записи';
+COMMENT ON COLUMN hub_product.record_source IS 'Источник записи';
+
+CREATE TABLE hub_order (
+    order_hash_key VARCHAR(32) PRIMARY KEY,
+    order_id INTEGER NOT NULL,
+    load_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    record_source VARCHAR(50) NOT NULL,
+    UNIQUE(order_id)
+);
+
+COMMENT ON TABLE hub_order IS 'Хаб заявок';
+COMMENT ON COLUMN hub_order.order_hash_key IS 'Хеш-ключ заявки (MD5 от order_id)';
+COMMENT ON COLUMN hub_order.order_id IS 'Бизнес-ключ заявки';
+COMMENT ON COLUMN hub_order.load_date IS 'Дата загрузки записи';
+COMMENT ON COLUMN hub_order.record_source IS 'Источник записи';
+
+-- Спутники (Satellites)
+CREATE TABLE sat_supplier_info (
+    supplier_hash_key VARCHAR(32) NOT NULL,
+    load_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    supplier_name VARCHAR(100) NOT NULL,
+    address TEXT,
+    registration_date DATE,
+    record_source VARCHAR(50) NOT NULL,
+    hash_diff VARCHAR(32) NOT NULL,
+    PRIMARY KEY (supplier_hash_key, load_date),
+    FOREIGN KEY (supplier_hash_key) REFERENCES hub_supplier(supplier_hash_key)
+);
+
+COMMENT ON TABLE sat_supplier_info IS 'Спутник информации о поставщиках';
+COMMENT ON COLUMN sat_supplier_info.supplier_hash_key IS 'Ссылка на хаб поставщика';
+COMMENT ON COLUMN sat_supplier_info.load_date IS 'Дата загрузки версии записи';
+COMMENT ON COLUMN sat_supplier_info.supplier_name IS 'Наименование поставщика';
+COMMENT ON COLUMN sat_supplier_info.address IS 'Адрес поставщика';
+COMMENT ON COLUMN sat_supplier_info.registration_date IS 'Дата регистрации';
+COMMENT ON COLUMN sat_supplier_info.hash_diff IS 'Хеш всех атрибутов для отслеживания изменений';
+
+CREATE TABLE sat_supplier_contact (
+    supplier_hash_key VARCHAR(32) NOT NULL,
+    load_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    contact_person VARCHAR(100),
+    phone VARCHAR(20),
+    email VARCHAR(100),
+    record_source VARCHAR(50) NOT NULL,
+    hash_diff VARCHAR(32) NOT NULL,
+    PRIMARY KEY (supplier_hash_key, load_date),
+    FOREIGN KEY (supplier_hash_key) REFERENCES hub_supplier(supplier_hash_key)
+);
+
+COMMENT ON TABLE sat_supplier_contact IS 'Спутник контактной информации поставщиков';
+COMMENT ON COLUMN sat_supplier_contact.supplier_hash_key IS 'Ссылка на хаб поставщика';
+COMMENT ON COLUMN sat_supplier_contact.load_date IS 'Дата загрузки версии записи';
+
+CREATE TABLE sat_product_info (
+    product_hash_key VARCHAR(32) NOT NULL,
+    load_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    product_name VARCHAR(100) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    unit_price DECIMAL(10,2) NOT NULL,
+    unit_of_measure VARCHAR(20) NOT NULL,
+    description TEXT,
+    record_source VARCHAR(50) NOT NULL,
+    hash_diff VARCHAR(32) NOT NULL,
+    PRIMARY KEY (product_hash_key, load_date),
+    FOREIGN KEY (product_hash_key) REFERENCES hub_product(product_hash_key)
+);
+
+COMMENT ON TABLE sat_product_info IS 'Спутник информации о продукции';
+COMMENT ON COLUMN sat_product_info.product_hash_key IS 'Ссылка на хаб продукта';
+COMMENT ON COLUMN sat_product_info.load_date IS 'Дата загрузки версии записи';
+
+CREATE TABLE sat_order_details (
+    order_hash_key VARCHAR(32) NOT NULL,
+    load_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    order_date DATE NOT NULL,
+    required_date DATE NOT NULL,
+    total_amount DECIMAL(12,2) DEFAULT 0,
+    record_source VARCHAR(50) NOT NULL,
+    hash_diff VARCHAR(32) NOT NULL,
+    PRIMARY KEY (order_hash_key, load_date),
+    FOREIGN KEY (order_hash_key) REFERENCES hub_order(order_hash_key)
+);
+
+COMMENT ON TABLE sat_order_details IS 'Спутник деталей заявки';
+COMMENT ON COLUMN sat_order_details.order_hash_key IS 'Ссылка на хаб заявки';
+COMMENT ON COLUMN sat_order_details.load_date IS 'Дата загрузки версии записи';
+
+CREATE TABLE sat_order_status (
+    order_hash_key VARCHAR(32) NOT NULL,
+    load_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(20) NOT NULL,
+    status_date TIMESTAMP NOT NULL,
+    comments TEXT,
+    record_source VARCHAR(50) NOT NULL,
+    hash_diff VARCHAR(32) NOT NULL,
+    PRIMARY KEY (order_hash_key, load_date),
+    FOREIGN KEY (order_hash_key) REFERENCES hub_order(order_hash_key)
+);
+
+COMMENT ON TABLE sat_order_status IS 'Спутник статусов заявки';
+COMMENT ON COLUMN sat_order_status.order_hash_key IS 'Ссылка на хаб заявки';
+COMMENT ON COLUMN sat_order_status.load_date IS 'Дата загрузки версии записи';
+
+-- Связи (Links)
+CREATE TABLE link_order_supplier (
+    order_supplier_hash_key VARCHAR(32) PRIMARY KEY,
+    order_hash_key VARCHAR(32) NOT NULL,
+    supplier_hash_key VARCHAR(32) NOT NULL,
+    load_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    record_source VARCHAR(50) NOT NULL,
+    FOREIGN KEY (order_hash_key) REFERENCES hub_order(order_hash_key),
+    FOREIGN KEY (supplier_hash_key) REFERENCES hub_supplier(supplier_hash_key),
+    UNIQUE(order_hash_key, supplier_hash_key)
+);
+
+COMMENT ON TABLE link_order_supplier IS 'Связь заявки с поставщиком';
+COMMENT ON COLUMN link_order_supplier.order_supplier_hash_key IS 'Хеш-ключ связи';
+COMMENT ON COLUMN link_order_supplier.order_hash_key IS 'Ссылка на хаб заявки';
+COMMENT ON COLUMN link_order_supplier.supplier_hash_key IS 'Ссылка на хаб поставщика';
+
+CREATE TABLE link_order_item (
+    order_item_hash_key VARCHAR(32) PRIMARY KEY,
+    order_hash_key VARCHAR(32) NOT NULL,
+    product_hash_key VARCHAR(32) NOT NULL,
+    load_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    record_source VARCHAR(50) NOT NULL,
+    FOREIGN KEY (order_hash_key) REFERENCES hub_order(order_hash_key),
+    FOREIGN KEY (product_hash_key) REFERENCES hub_product(product_hash_key),
+    UNIQUE(order_hash_key, product_hash_key)
+);
+
+COMMENT ON TABLE link_order_item IS 'Связь заявки с продуктом (позиция заявки)';
+COMMENT ON COLUMN link_order_item.order_item_hash_key IS 'Хеш-ключ позиции заявки';
+COMMENT ON COLUMN link_order_item.order_hash_key IS 'Ссылка на хаб заявки';
+COMMENT ON COLUMN link_order_item.product_hash_key IS 'Ссылка на хаб продукта';
+
+-- Спутник связей
+CREATE TABLE sat_order_item_details (
+    order_item_hash_key VARCHAR(32) NOT NULL,
+    load_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    quantity DECIMAL(10,3) NOT NULL,
+    unit_price DECIMAL(10,2) NOT NULL,
+    line_total DECIMAL(12,2) NOT NULL,
+    record_source VARCHAR(50) NOT NULL,
+    hash_diff VARCHAR(32) NOT NULL,
+    PRIMARY KEY (order_item_hash_key, load_date),
+    FOREIGN KEY (order_item_hash_key) REFERENCES link_order_item(order_item_hash_key)
+);
+
+COMMENT ON TABLE sat_order_item_details IS 'Спутник деталей позиции заявки';
+COMMENT ON COLUMN sat_order_item_details.order_item_hash_key IS 'Ссылка на связь позиции заявки';
+COMMENT ON COLUMN sat_order_item_details.load_date IS 'Дата загрузки версии записи';
+
+-- Индексы для улучшения производительности
+CREATE INDEX idx_hub_supplier_id ON hub_supplier(supplier_id);
+CREATE INDEX idx_hub_product_id ON hub_product(product_id);
+CREATE INDEX idx_hub_order_id ON hub_order(order_id);
+
+CREATE INDEX idx_sat_supplier_info_hash ON sat_supplier_info(supplier_hash_key);
+CREATE INDEX idx_sat_supplier_contact_hash ON sat_supplier_contact(supplier_hash_key);
+CREATE INDEX idx_sat_product_info_hash ON sat_product_info(product_hash_key);
+CREATE INDEX idx_sat_order_details_hash ON sat_order_details(order_hash_key);
+CREATE INDEX idx_sat_order_status_hash ON sat_order_status(order_hash_key);
+
+CREATE INDEX idx_link_order_supplier_order ON link_order_supplier(order_hash_key);
+CREATE INDEX idx_link_order_supplier_supplier ON link_order_supplier(supplier_hash_key);
+CREATE INDEX idx_link_order_item_order ON link_order_item(order_hash_key);
+CREATE INDEX idx_link_order_item_product ON link_order_item(product_hash_key);
+CREATE INDEX idx_sat_order_item_details_hash ON sat_order_item_details(order_item_hash_key);
+
+-- Функции для генерации хешей (ИСПРАВЛЕННЫЕ)
+CREATE OR REPLACE FUNCTION generate_hash_key(id INTEGER)
+RETURNS VARCHAR(32) AS $$
+BEGIN
+    RETURN MD5(id::text);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION generate_hash_diff(text_values TEXT)
+RETURNS VARCHAR(32) AS $$
+BEGIN
+    RETURN MD5(text_values);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Альтернативная версия функции для работы с несколькими полями
+CREATE OR REPLACE FUNCTION generate_composite_hash_diff(
+    val1 TEXT DEFAULT NULL,
+    val2 TEXT DEFAULT NULL,
+    val3 TEXT DEFAULT NULL,
+    val4 TEXT DEFAULT NULL,
+    val5 TEXT DEFAULT NULL
+)
+RETURNS VARCHAR(32) AS $$
+BEGIN
+    RETURN MD5(
+        COALESCE(val1, '') || '|' || 
+        COALESCE(val2, '') || '|' || 
+        COALESCE(val3, '') || '|' || 
+        COALESCE(val4, '') || '|' || 
+        COALESCE(val5, '')
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- Представление для удобства работы с данными (Point-in-Time таблица)
+CREATE VIEW v_orders_current AS
+SELECT 
+    ho.order_id,
+    hs.supplier_id,
+    ssi.supplier_name,
+    ssi.address,
+    ssc.contact_person,
+    ssc.phone,
+    ssc.email,
+    sod.order_date,
+    sod.required_date,
+    sod.total_amount,
+    sos.status,
+    sos.status_date,
+    sos.comments as status_comments
+FROM hub_order ho
+JOIN link_order_supplier los ON ho.order_hash_key = los.order_hash_key
+JOIN hub_supplier hs ON los.supplier_hash_key = hs.supplier_hash_key
+JOIN LATERAL (
+    SELECT * FROM sat_supplier_info 
+    WHERE supplier_hash_key = hs.supplier_hash_key 
+    ORDER BY load_date DESC 
+    LIMIT 1
+) ssi ON true
+JOIN LATERAL (
+    SELECT * FROM sat_supplier_contact 
+    WHERE supplier_hash_key = hs.supplier_hash_key 
+    ORDER BY load_date DESC 
+    LIMIT 1
+) ssc ON true
+JOIN LATERAL (
+    SELECT * FROM sat_order_details 
+    WHERE order_hash_key = ho.order_hash_key 
+    ORDER BY load_date DESC 
+    LIMIT 1
+) sod ON true
+JOIN LATERAL (
+    SELECT * FROM sat_order_status 
+    WHERE order_hash_key = ho.order_hash_key 
+    ORDER BY load_date DESC 
+    LIMIT 1
+) sos ON true;
+
+COMMENT ON VIEW v_orders_current IS 'Текущее состояние заявок с актуальными данными';
+
+-- Представление для позиций заявок
+CREATE VIEW v_order_items_current AS
+SELECT 
+    ho.order_id,
+    hp.product_id,
+    spi.product_name,
+    spi.category,
+    spi.unit_of_measure,
+    soid.quantity,
+    soid.unit_price,
+    soid.line_total
+FROM link_order_item loi
+JOIN hub_order ho ON loi.order_hash_key = ho.order_hash_key
+JOIN hub_product hp ON loi.product_hash_key = hp.product_hash_key
+JOIN LATERAL (
+    SELECT * FROM sat_order_item_details 
+    WHERE order_item_hash_key = loi.order_item_hash_key 
+    ORDER BY load_date DESC 
+    LIMIT 1
+) soid ON true
+JOIN LATERAL (
+    SELECT * FROM sat_product_info 
+    WHERE product_hash_key = hp.product_hash_key 
+    ORDER BY load_date DESC 
+    LIMIT 1
+) spi ON true;
+
+COMMENT ON VIEW v_order_items_current IS 'Текущее состояние позиций заявок';
